@@ -11,6 +11,7 @@
 //	POLAR_ASSETS_LISTEN         127.0.0.1:8091     (HTTP listen addr)
 //	POLAR_ASSETS_VERSION        git-sha or "0.0.1" (cosmetic; appears in /admin-plugins.html)
 //	POLAR_ASSETS_BLOB_DIR       /Users/local/assets-svc-data
+//	POLAR_ASSETS_CAPACITY_GB    100   (soft cap for LRU eviction; 0 disables sweeper)
 //	POLAR_ASSETS_METRICS_TOKEN  bearer token for /metrics; unset = endpoint 404
 //
 // The plaintext PLUGIN_TOKEN is stored ONLY in the plugin's env (chmod
@@ -24,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -41,6 +43,7 @@ func main() {
 		Listen:       envOrDefault("POLAR_ASSETS_LISTEN", "127.0.0.1:8091"),
 		BuildVersion: envOrDefault("POLAR_ASSETS_VERSION", "0.0.1"),
 		BlobDir:      envOrDefault("POLAR_ASSETS_BLOB_DIR", "/Users/local/assets-svc-data"),
+		CapacityGB:   envIntOrDefault("POLAR_ASSETS_CAPACITY_GB", 100),
 		MetricsToken: os.Getenv("POLAR_ASSETS_METRICS_TOKEN"),
 	}
 	if strings.TrimSpace(cfg.PluginToken) == "" {
@@ -90,4 +93,17 @@ func envOrDefault(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func envIntOrDefault(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Printf("env %s=%q is not a valid int; using fallback %d", key, v, fallback)
+		return fallback
+	}
+	return n
 }

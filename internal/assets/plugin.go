@@ -39,6 +39,7 @@ type Plugin struct {
 	Listen     string
 	Ver        string
 	BlobDir    string // assets-svc-local blob root (e.g. /Users/local/assets-svc-data)
+	CapacityGB int    // soft cap for LRU eviction; 0 disables sweeper
 	MetricsTok string // Bearer token for /metrics; empty = endpoint 404
 
 	metrics   *assetsMetrics
@@ -52,6 +53,7 @@ type Config struct {
 	Listen       string
 	BuildVersion string
 	BlobDir      string
+	CapacityGB   int
 	MetricsToken string
 }
 
@@ -95,6 +97,7 @@ func New(ctx context.Context, cfg Config) (*Plugin, error) {
 		Listen:     cfg.Listen,
 		Ver:        cfg.BuildVersion,
 		BlobDir:    cfg.BlobDir,
+		CapacityGB: cfg.CapacityGB,
 		MetricsTok: cfg.MetricsToken,
 		metrics:    newAssetsMetrics(),
 		startedAt:  time.Now(),
@@ -110,6 +113,7 @@ func New(ctx context.Context, cfg Config) (*Plugin, error) {
 func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	r.GET("/healthz", p.handleHealthz)
 	r.GET("/metrics", p.handleMetricsExposition)
+	r.GET("/stats", p.handleStats)
 
 	// /v1/* — blob-cache device-facing surface (skeletons return 501).
 	v1 := r.Group("/v1")
@@ -126,10 +130,11 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	_ = r.Group("/api/admin", p.requireAdminViaDock())
 }
 
-// Start kicks off background work: heartbeat to dock. P3+ will add
-// GC + warm-pull workers here.
+// Start kicks off background work: heartbeat to dock + LRU eviction
+// sweeper. P3+ will add the warm-pull worker here too.
 func (p *Plugin) Start(ctx context.Context) {
 	go p.heartbeatLoop(ctx)
+	go p.runEvictionSweeper(ctx)
 }
 
 // Close releases plugin resources. P3 will close the DB pool here.
