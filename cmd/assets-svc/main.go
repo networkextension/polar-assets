@@ -43,8 +43,12 @@ func main() {
 		Listen:       envOrDefault("POLAR_ASSETS_LISTEN", "127.0.0.1:8091"),
 		BuildVersion: envOrDefault("POLAR_ASSETS_VERSION", "0.0.1"),
 		BlobDir:      envOrDefault("POLAR_ASSETS_BLOB_DIR", "/Users/local/assets-svc-data"),
-		CapacityGB:   envIntOrDefault("POLAR_ASSETS_CAPACITY_GB", 100),
-		MetricsToken: os.Getenv("POLAR_ASSETS_METRICS_TOKEN"),
+		CapacityGB:     envIntOrDefault("POLAR_ASSETS_CAPACITY_GB", 100),
+		DockHMACSecret: os.Getenv("POLAR_ASSETS_DOCK_HMAC_SECRET"),
+		MetricsToken:   os.Getenv("POLAR_ASSETS_METRICS_TOKEN"),
+	}
+	if strings.TrimSpace(cfg.DockHMACSecret) == "" {
+		log.Print("WARNING: POLAR_ASSETS_DOCK_HMAC_SECRET unset — /v1/blob + /v1/receive will 401/403 every request. Set it BEFORE registering the provider with dock.")
 	}
 	if strings.TrimSpace(cfg.PluginToken) == "" {
 		log.Fatal("POLAR_PLUGIN_TOKEN unset — get plaintext from /admin-plugins.html (one-time print at row creation)")
