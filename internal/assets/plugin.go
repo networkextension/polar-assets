@@ -38,23 +38,25 @@ type Plugin struct {
 	Name       string
 	Listen     string
 	Ver        string
-	BlobDir    string // assets-svc-local blob root (e.g. /Users/local/assets-svc-data)
-	CapacityGB int    // soft cap for LRU eviction; 0 disables sweeper
-	MetricsTok string // Bearer token for /metrics; empty = endpoint 404
+	BlobDir        string // assets-svc-local blob root (e.g. /Users/local/assets-svc-data)
+	CapacityGB     int    // soft cap for LRU eviction; 0 disables sweeper
+	DockHMACSecret string // dock-side shared secret; must match the asset_providers.hmac_token row for this slug
+	MetricsTok     string // Bearer token for /metrics; empty = endpoint 404
 
 	metrics   *assetsMetrics
 	startedAt time.Time
 }
 
 type Config struct {
-	DockBase     string
-	PluginName   string
-	PluginToken  string
-	Listen       string
-	BuildVersion string
-	BlobDir      string
-	CapacityGB   int
-	MetricsToken string
+	DockBase       string
+	PluginName     string
+	PluginToken    string
+	Listen         string
+	BuildVersion   string
+	BlobDir        string
+	CapacityGB     int
+	DockHMACSecret string
+	MetricsToken   string
 }
 
 // New builds the dock SDK client, verifies the HMAC handshake via
@@ -96,9 +98,10 @@ func New(ctx context.Context, cfg Config) (*Plugin, error) {
 		Name:       cfg.PluginName,
 		Listen:     cfg.Listen,
 		Ver:        cfg.BuildVersion,
-		BlobDir:    cfg.BlobDir,
-		CapacityGB: cfg.CapacityGB,
-		MetricsTok: cfg.MetricsToken,
+		BlobDir:        cfg.BlobDir,
+		CapacityGB:     cfg.CapacityGB,
+		DockHMACSecret: cfg.DockHMACSecret,
+		MetricsTok:     cfg.MetricsToken,
 		metrics:    newAssetsMetrics(),
 		startedAt:  time.Now(),
 	}, nil
@@ -118,8 +121,8 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	// /v1/* — blob-cache device-facing surface (skeletons return 501).
 	v1 := r.Group("/v1")
 	{
-		v1.GET("/blob/:sha256", p.handleBlobGetStub)
-		v1.POST("/receive", p.handleReceiveStub)
+		v1.GET("/blob/:sha256", p.handleBlobGet)
+		v1.POST("/receive", p.handleReceive)
 		v1.POST("/pull", p.handlePullStub)
 	}
 

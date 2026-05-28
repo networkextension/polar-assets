@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/networkextension/polar-sdk v0.2.5
+	github.com/networkextension/polar-sdk v0.3.0
 	github.com/prometheus/client_golang v1.23.2
 )
 
