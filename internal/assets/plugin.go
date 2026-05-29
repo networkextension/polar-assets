@@ -123,7 +123,7 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	{
 		v1.GET("/blob/:sha256", p.handleBlobGet)
 		v1.POST("/receive", p.handleReceive)
-		v1.POST("/pull", p.handlePullStub)
+		v1.POST("/pull", p.handlePull)
 	}
 
 	// /api/admin/assets-* — admin CRUD, Dock-auth-gated. P3 will add
