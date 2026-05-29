@@ -93,6 +93,13 @@ func New(ctx context.Context, cfg Config) (*Plugin, error) {
 
 	_ = ctx // reserved for future DB ping (P3)
 
+	// Log a fingerprint of the signed-URL secret at startup so an
+	// operator can confirm the running process actually has the
+	// right value without leaking the secret itself. Compare
+	// against dock-side:
+	//   psql -c "SELECT substr(encode(digest(hmac_token,'sha256'),'hex'),1,16) FROM asset_providers WHERE slug='<slug>';"
+	logSecretFingerprint(cfg.PluginName, cfg.DockHMACSecret)
+
 	return &Plugin{
 		Dock:       dock,
 		Name:       cfg.PluginName,

@@ -36,7 +36,15 @@ func (p *Plugin) handleBlobGet(c *gin.Context) {
 	if err := verifyDockURL(token, sha, []byte(p.DockHMACSecret)); err != nil {
 		log.Printf("assets: blob 403 sha=%s reason=%v", sha, err)
 		p.metrics.recordRequest("blob_get", "403")
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid signed url"})
+		// Surface the failure category (not the secret/sig itself) so
+		// an operator hitting the URL directly can diagnose without
+		// needing server-log access. Categories include "bad sig",
+		// "expired", "malformed token", "missing token or sha",
+		// "missing secret", "bad sig hex", "bad exp …".
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":  "invalid signed url",
+			"reason": err.Error(),
+		})
 		return
 	}
 	// Reject anything with a path separator so a clever client can't
