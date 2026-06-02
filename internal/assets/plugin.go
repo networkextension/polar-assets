@@ -129,6 +129,7 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	v1 := r.Group("/v1")
 	{
 		v1.GET("/blob/:sha256", p.handleBlobGet)
+		v1.PUT("/blob/:sha256", p.handleBlobPut) // direct client upload via dock-signed grant
 		v1.POST("/receive", p.handleReceive)
 		v1.POST("/pull", p.handlePull)
 	}
