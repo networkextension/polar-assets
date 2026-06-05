@@ -15,12 +15,10 @@ package assets
 // somewhere else (or surface a useful error to the user).
 
 import (
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -73,16 +71,14 @@ func (p *Plugin) handleBlobGet(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stat failed"})
 		return
 	}
+	// Serve via http.ServeContent so HTTP Range works: byte-range requests
+	// get 206 Partial Content + Accept-Ranges + Content-Range (needed for
+	// <audio>/<video> seek and resumable large-file downloads); a plain
+	// request still gets a full 200. f is an *os.File (io.ReadSeeker), and
+	// ServeContent sets Content-Length itself. We pre-set Content-Type so
+	// ServeContent doesn't content-sniff (we don't carry the mime here).
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Length", strconv.FormatInt(stat.Size(), 10))
 	c.Header("X-Asset-SHA256", sha)
-	c.Status(http.StatusOK)
-	if _, err := io.Copy(c.Writer, f); err != nil {
-		// Body already started; can't change status. Log so ops sees
-		// the rate, but the client already saw partial bytes.
-		log.Printf("assets: blob stream interrupted sha=%s: %v", sha, err)
-		p.metrics.recordRequest("blob_get", "500")
-		return
-	}
+	http.ServeContent(c.Writer, c.Request, sha, stat.ModTime(), f)
 	p.metrics.recordRequest("blob_get", "200")
 }
