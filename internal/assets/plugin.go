@@ -127,6 +127,12 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 
 	// /v1/* — blob-cache device-facing surface (skeletons return 501).
 	v1 := r.Group("/v1")
+	// CORS: blobs (audio/video/images) are fetched cross-origin by browser
+	// players — e.g. the 灵珠/lzhu music web UI whose <audio> follows the
+	// music /stream 302 here. Echo the Origin and EXPOSE the range headers so
+	// the media element can seek; answer OPTIONS preflight on every /v1 path.
+	v1.Use(p.cors())
+	v1.OPTIONS("/*path", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 	{
 		v1.GET("/blob/:sha256", p.handleBlobGet)
 		v1.PUT("/blob/:sha256", p.handleBlobPut) // direct client upload via dock-signed grant
@@ -139,6 +145,29 @@ func (p *Plugin) RegisterRoutes(r gin.IRouter) {
 	// now the group exists so the middleware compiles + future routes
 	// have a stable mount point.
 	_ = r.Group("/api/admin", p.requireAdminViaDock())
+}
+
+// cors lets browser media players fetch blobs cross-origin (e.g. an <audio>
+// element on another site following a signed /stream redirect here). It
+// echoes the request Origin so credentialed loads work ('*' is illegal with
+// credentials) and — crucially for seeking — EXPOSES the byte-range response
+// headers so the player can read Content-Range / Accept-Ranges. Preflight
+// (OPTIONS) is short-circuited 204 by the route.
+func (p *Plugin) cors() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if origin := strings.TrimSpace(c.GetHeader("Origin")); origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Vary", "Origin")
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
+		c.Header("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
+		c.Header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, X-Asset-SHA256")
+		c.Header("Access-Control-Max-Age", "600")
+		c.Next()
+	}
 }
 
 // Start kicks off background work: heartbeat to dock + LRU eviction
