@@ -19,10 +19,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
+
+// mimeRE matches a plain "type/subtype" with no parameters/whitespace — used
+// to vet the caller-supplied ?ct= before reflecting it into Content-Type, so
+// it can't carry header-splitting junk or response params.
+var mimeRE = regexp.MustCompile(`^[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*$`)
 
 func (p *Plugin) handleBlobGet(c *gin.Context) {
 	sha := strings.TrimSpace(c.Param("sha256"))
@@ -76,8 +82,17 @@ func (p *Plugin) handleBlobGet(c *gin.Context) {
 	// <audio>/<video> seek and resumable large-file downloads); a plain
 	// request still gets a full 200. f is an *os.File (io.ReadSeeker), and
 	// ServeContent sets Content-Length itself. We pre-set Content-Type so
-	// ServeContent doesn't content-sniff (we don't carry the mime here).
-	c.Header("Content-Type", "application/octet-stream")
+	// ServeContent doesn't content-sniff. The blob store is keyed by sha256
+	// (no mime of its own), so the caller passes the asset's real mime via
+	// ?ct= (dock's download-url / the music svc append it). This matters for
+	// Safari: its <audio>/<video> refuse to play application/octet-stream,
+	// while Chrome content-sniffs and plays anyway. Vet the value first;
+	// fall back to octet-stream on anything unexpected.
+	ct := strings.TrimSpace(c.Query("ct"))
+	if !mimeRE.MatchString(ct) {
+		ct = "application/octet-stream"
+	}
+	c.Header("Content-Type", ct)
 	c.Header("X-Asset-SHA256", sha)
 	http.ServeContent(c.Writer, c.Request, sha, stat.ModTime(), f)
 	p.metrics.recordRequest("blob_get", "200")
