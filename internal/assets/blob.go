@@ -17,6 +17,7 @@ package assets
 import (
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,6 +30,32 @@ import (
 // to vet the caller-supplied ?ct= before reflecting it into Content-Type, so
 // it can't carry header-splitting junk or response params.
 var mimeRE = regexp.MustCompile(`^[A-Za-z0-9][\w.+-]*/[A-Za-z0-9][\w.+-]*$`)
+
+// downloadFilename vets the caller-supplied ?name= before it goes into
+// Content-Disposition. The blob store is keyed by sha256, so without this the
+// browser names the download after the hash (no ".apk"/".csv"). Only the last
+// path element is kept; quotes, control chars and anything non-printable are
+// dropped; empty/oversized results mean "no header".
+func downloadFilename(raw string) string {
+	name := filepath.Base(strings.TrimSpace(raw))
+	if name == "." || name == "/" || name == ".." {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r < 0x20 || r == 0x7f || r == '"' || r == '\\' || r == '/':
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "" || len(out) > 255 {
+		return ""
+	}
+	return out
+}
 
 func (p *Plugin) handleBlobGet(c *gin.Context) {
 	sha := strings.TrimSpace(c.Param("sha256"))
@@ -93,7 +120,27 @@ func (p *Plugin) handleBlobGet(c *gin.Context) {
 		ct = "application/octet-stream"
 	}
 	c.Header("Content-Type", ct)
+	// ?name= (dock appends the catalog name) → real filename on download.
+	// RFC 6266/5987: ASCII fallback in filename=, UTF-8 in filename*=.
+	if name := downloadFilename(c.Query("name")); name != "" {
+		c.Header("Content-Disposition",
+			`attachment; filename="`+asciiFallback(name)+`"; filename*=UTF-8''`+url.PathEscape(name))
+	}
 	c.Header("X-Asset-SHA256", sha)
 	http.ServeContent(c.Writer, c.Request, sha, stat.ModTime(), f)
 	p.metrics.recordRequest("blob_get", "200")
+}
+
+// asciiFallback replaces non-ASCII runes with '_' for the plain filename=
+// parameter; UA's that understand filename*= ignore it anyway.
+func asciiFallback(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r > 0x7e {
+			b.WriteByte('_')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
